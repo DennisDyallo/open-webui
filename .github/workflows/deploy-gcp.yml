@@ -1,0 +1,89 @@
+name: Deploy Open WebUI to GCP Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: ${{ secrets.LB_OPENWEBUI_GCP_PROJECT_ID }}
+  REGION: us-central1
+  SERVICE_NAME: open-webui
+  IMAGE_NAME: us-docker.pkg.dev/${{ secrets.LB_OPENWEBUI_GCP_PROJECT_ID }}/openwebui/open-webui
+
+jobs:
+  deploy:
+    name: Build and Deploy to Cloud Run
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.LB_OPENWEBUI_GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.LB_OPENWEBUI_GCP_PROJECT_ID }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker us-docker.pkg.dev
+
+      - name: Pull previous image for caching (if exists)
+        continue-on-error: true
+        run: |
+          docker pull ${{ env.IMAGE_NAME }}:latest || true
+
+      - name: Build Docker image with caching
+        run: |
+          docker buildx build \
+            --cache-from=${{ env.IMAGE_NAME }}:latest \
+            --cache-to=type=inline \
+            --tag ${{ env.IMAGE_NAME }}:latest \
+            --tag ${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --load \
+            .
+
+      - name: Push Docker image to Artifact Registry
+        run: |
+          docker push ${{ env.IMAGE_NAME }}:latest
+          docker push ${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SERVICE_NAME }} \
+            --image ${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --platform managed \
+            --region ${{ env.REGION }} \
+            --min-instances 0 \
+            --max-instances 2 \
+            --memory 1Gi \
+            --cpu 1 \
+            --timeout 300 \
+            --allow-unauthenticated \
+            --set-env-vars ENV=prod \
+            --set-env-vars WEBUI_NAME="LightBringer AI" \
+            --set-env-vars ENABLE_OLLAMA_API=false \
+            --set-env-vars OPENAI_API_BASE_URL=https://api.openai.com/v1 \
+            --set-secrets=OPENAI_API_KEY=lb-openwebui-openai-api-key:latest \
+            --set-secrets=WEBUI_SECRET_KEY=lb-openwebui-secret-key:latest
+
+      - name: Show deployment info
+        run: |
+          echo "::notice title=Deployment URL::$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+            --platform managed \
+            --region ${{ env.REGION }} \
+            --format='value(status.url)')"
