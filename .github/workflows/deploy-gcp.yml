@@ -58,10 +58,12 @@ jobs:
             --cpu 1 \
             --timeout 300 \
             --allow-unauthenticated \
+            --add-cloudsql-instances=lb-openwebui:us-central1:open-webui-db \
             --set-env-vars ENV=prod \
             --set-env-vars WEBUI_NAME="LightBringer AI" \
             --set-env-vars ENABLE_OLLAMA_API=false \
             --set-env-vars OPENAI_API_BASE_URL=https://api.openai.com/v1 \
+            --set-secrets=DATABASE_URL=lb-openwebui-database-url:latest \
             --set-secrets=OPENAI_API_KEY=lb-openwebui-openai-api-key:latest \
             --set-secrets=WEBUI_SECRET_KEY=lb-openwebui-secret-key:latest
 
