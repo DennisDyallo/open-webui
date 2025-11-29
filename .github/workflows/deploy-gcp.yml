@@ -11,6 +11,7 @@ env:
   REGION: us-central1
   SERVICE_NAME: open-webui
   OFFICIAL_IMAGE: ghcr.io/open-webui/open-webui:main
+  GCP_IMAGE: us-docker.pkg.dev/${{ secrets.LB_OPENWEBUI_GCP_PROJECT_ID }}/openwebui/open-webui:latest
 
 jobs:
   deploy:
@@ -32,10 +33,23 @@ jobs:
         with:
           project_id: ${{ secrets.LB_OPENWEBUI_GCP_PROJECT_ID }}
 
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker us-docker.pkg.dev
+
+      - name: Pull official Open WebUI image
+        run: |
+          docker pull ${{ env.OFFICIAL_IMAGE }}
+
+      - name: Tag and push to Artifact Registry
+        run: |
+          docker tag ${{ env.OFFICIAL_IMAGE }} ${{ env.GCP_IMAGE }}
+          docker push ${{ env.GCP_IMAGE }}
+
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy ${{ env.SERVICE_NAME }} \
-            --image ${{ env.OFFICIAL_IMAGE }} \
+            --image ${{ env.GCP_IMAGE }} \
             --platform managed \
             --region ${{ env.REGION }} \
             --min-instances 0 \
