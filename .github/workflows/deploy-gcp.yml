@@ -46,6 +46,22 @@ jobs:
           docker tag ${{ env.OFFICIAL_IMAGE }} ${{ env.GCP_IMAGE }}
           docker push ${{ env.GCP_IMAGE }}
 
+      - name: Get LiteLLM URL
+        id: get-litellm-url
+        run: |
+          LITELLM_URL=$(gcloud run services describe litellm-proxy \
+            --platform managed \
+            --region ${{ env.REGION }} \
+            --format='value(status.url)' 2>/dev/null || echo "")
+          
+          if [ -z "$LITELLM_URL" ]; then
+            echo "⚠️  LiteLLM service not found, using OpenAI directly"
+            echo "openai_base_url=https://api.openai.com/v1" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Using LiteLLM Proxy at: $LITELLM_URL"
+            echo "openai_base_url=$LITELLM_URL" >> $GITHUB_OUTPUT
+          fi
+
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy ${{ env.SERVICE_NAME }} \
@@ -62,9 +78,9 @@ jobs:
             --set-env-vars ENV=prod \
             --set-env-vars WEBUI_NAME="LightBringer AI" \
             --set-env-vars ENABLE_OLLAMA_API=false \
-            --set-env-vars OPENAI_API_BASE_URL=https://api.openai.com/v1 \
+            --set-env-vars OPENAI_API_BASE_URL=${{ steps.get-litellm-url.outputs.openai_base_url }} \
             --set-secrets=DATABASE_URL=lb-openwebui-database-url:latest \
-            --set-secrets=OPENAI_API_KEY=lb-openwebui-openai-api-key:latest \
+            --set-secrets=OPENAI_API_KEY=lb-litellm-master-key:latest \
             --set-secrets=WEBUI_SECRET_KEY=lb-openwebui-secret-key:latest
 
       - name: Show deployment info

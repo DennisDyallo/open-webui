@@ -1,0 +1,116 @@
+name: Deploy LiteLLM to GCP Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'litellm_config.yaml'
+      - '.github/workflows/deploy-litellm-gcp.yml'
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: ${{ secrets.LB_OPENWEBUI_GCP_PROJECT_ID }}
+  REGION: us-central1
+  SERVICE_NAME: litellm-proxy
+  LITELLM_IMAGE: ghcr.io/berriai/litellm:main-latest
+  GCP_IMAGE: us-docker.pkg.dev/${{ secrets.LB_OPENWEBUI_GCP_PROJECT_ID }}/openwebui/litellm:latest
+
+jobs:
+  deploy:
+    name: Deploy LiteLLM to Cloud Run
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.LB_OPENWEBUI_GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.LB_OPENWEBUI_GCP_PROJECT_ID }}
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker us-docker.pkg.dev
+
+      - name: Pull official LiteLLM image
+        run: |
+          docker pull ${{ env.LITELLM_IMAGE }}
+
+      - name: Tag and push to Artifact Registry
+        run: |
+          docker tag ${{ env.LITELLM_IMAGE }} ${{ env.GCP_IMAGE }}
+          docker push ${{ env.GCP_IMAGE }}
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SERVICE_NAME }} \
+            --image ${{ env.GCP_IMAGE }} \
+            --platform managed \
+            --region ${{ env.REGION }} \
+            --min-instances 0 \
+            --max-instances 2 \
+            --memory 512Mi \
+            --cpu 1 \
+            --timeout 300 \
+            --no-allow-unauthenticated \
+            --ingress internal-and-cloud-load-balancing \
+            --add-cloudsql-instances=lb-openwebui:us-central1:open-webui-db \
+            --set-env-vars ENV=prod \
+            --set-secrets=LITELLM_MASTER_KEY=lb-litellm-master-key:latest \
+            --set-secrets=DATABASE_URL=lb-litellm-database-url:latest \
+            --set-secrets=OPENAI_API_KEY=lb-openwebui-openai-api-key:latest \
+            --set-secrets=ANTHROPIC_API_KEY=lb-litellm-anthropic-api-key:latest \
+            --command=/bin/sh \
+            --args="-c" \
+            --args="litellm --config /app/config.yaml --port 8080 --detailed_debug"
+      
+      - name: Grant Open WebUI service account invoker access to LiteLLM
+        run: |
+          # Get Open WebUI's service account
+          OPENWEBUI_SA=$(gcloud run services describe open-webui \
+            --region ${{ env.REGION }} \
+            --format='value(spec.template.spec.serviceAccountName)' 2>/dev/null || echo "")
+          
+          if [ -z "$OPENWEBUI_SA" ]; then
+            echo "⚠️  Using default compute service account"
+            OPENWEBUI_SA="${{ env.PROJECT_ID }}-compute@developer.gserviceaccount.com"
+          fi
+          
+          # Grant invoker permission
+          gcloud run services add-iam-policy-binding ${{ env.SERVICE_NAME }} \
+            --region ${{ env.REGION }} \
+            --member="serviceAccount:${OPENWEBUI_SA}" \
+            --role="roles/run.invoker"
+
+      - name: Upload config to Cloud Run
+        run: |
+          # Create a temporary bucket for config if it doesn't exist
+          gsutil mb -p ${{ env.PROJECT_ID }} -l ${{ env.REGION }} gs://${{ env.PROJECT_ID }}-litellm-config || true
+          
+          # Upload config
+          gsutil cp litellm_config.yaml gs://${{ env.PROJECT_ID }}-litellm-config/config.yaml
+          
+          # Update service to mount config from bucket
+          gcloud run services update ${{ env.SERVICE_NAME }} \
+            --region ${{ env.REGION }} \
+            --update-env-vars CONFIG_URL=gs://${{ env.PROJECT_ID }}-litellm-config/config.yaml
+
+      - name: Show deployment info
+        run: |
+          LITELLM_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+            --platform managed \
+            --region ${{ env.REGION }} \
+            --format='value(status.url)')
+          echo "::notice title=LiteLLM URL::${LITELLM_URL}"
+          echo "::notice title=Health Check::${LITELLM_URL}/health"
