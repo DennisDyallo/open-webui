@@ -58,6 +58,7 @@ jobs:
             --image ${{ env.GCP_IMAGE }} \
             --platform managed \
             --region ${{ env.REGION }} \
+            --port 8080 \
             --min-instances 0 \
             --max-instances 2 \
             --memory 512Mi \
