@@ -1,0 +1,10 @@
+FROM ghcr.io/berriai/litellm:main-latest
+
+# Copy the config file into the container
+COPY litellm_config.yaml /app/config.yaml
+
+# Expose port 8080 for Cloud Run
+EXPOSE 8080
+
+# Start LiteLLM with the config file
+CMD ["--config", "/app/config.yaml", "--port", "8080"]

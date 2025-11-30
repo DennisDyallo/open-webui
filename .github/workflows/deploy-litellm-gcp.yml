@@ -43,22 +43,13 @@ jobs:
         run: |
           gcloud auth configure-docker us-docker.pkg.dev
 
-      - name: Pull official LiteLLM image
+      - name: Build custom LiteLLM image with config
         run: |
-          docker pull ${{ env.LITELLM_IMAGE }}
+          docker build -f Dockerfile.litellm -t ${{ env.GCP_IMAGE }} .
 
-      - name: Tag and push to Artifact Registry
+      - name: Push to Artifact Registry
         run: |
-          docker tag ${{ env.LITELLM_IMAGE }} ${{ env.GCP_IMAGE }}
           docker push ${{ env.GCP_IMAGE }}
-
-      - name: Upload config to GCS
-        run: |
-          # Create bucket if it doesn't exist
-          gsutil mb -p ${{ env.PROJECT_ID }} -l ${{ env.REGION }} gs://${{ env.PROJECT_ID }}-litellm-config || true
-          
-          # Upload config
-          gsutil cp litellm_config.yaml gs://${{ env.PROJECT_ID }}-litellm-config/config.yaml
 
       - name: Deploy to Cloud Run
         run: |
@@ -75,7 +66,7 @@ jobs:
             --no-allow-unauthenticated \
             --ingress internal-and-cloud-load-balancing \
             --add-cloudsql-instances=lb-openwebui:us-central1:open-webui-db \
-            --set-env-vars ENV=prod,LITELLM_CONFIG_BUCKET_TYPE=gcs,LITELLM_CONFIG_BUCKET_NAME=${{ env.PROJECT_ID }}-litellm-config,LITELLM_CONFIG_BUCKET_OBJECT_KEY=config.yaml \
+            --set-env-vars ENV=prod \
             --set-secrets=LITELLM_MASTER_KEY=lb-litellm-master-key:latest \
             --set-secrets=DATABASE_URL=lb-litellm-database-url:latest \
             --set-secrets=OPENAI_API_KEY=lb-openwebui-openai-api-key:latest \
