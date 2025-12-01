@@ -65,10 +65,8 @@ jobs:
             --timeout 300 \
             --no-allow-unauthenticated \
             --ingress internal-and-cloud-load-balancing \
-            --add-cloudsql-instances=lb-openwebui:us-central1:open-webui-db \
             --set-env-vars ENV=prod \
             --set-secrets=LITELLM_MASTER_KEY=lb-litellm-master-key:latest \
-            --set-secrets=DATABASE_URL=lb-litellm-database-url:latest \
             --set-secrets=OPENAI_API_KEY=lb-openwebui-openai-api-key:latest \
             --set-secrets=ANTHROPIC_API_KEY=lb-litellm-anthropic-api-key:latest
       
