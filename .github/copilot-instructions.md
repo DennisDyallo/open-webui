@@ -33,12 +33,14 @@ This repository deploys **Open WebUI** and **LiteLLM Proxy** to Google Cloud Pla
 
 ```
 .github/workflows/
-├── deploy-gcp.yml          # Deploys Open WebUI to Cloud Run
-└── deploy-litellm-gcp.yml  # Deploys LiteLLM proxy to Cloud Run
-setup-github-actions.sh     # One-time GCP setup for GitHub Actions
-setup-postgres.sh           # One-time PostgreSQL database setup
-litellm_config.yaml         # LiteLLM model routing config (OpenAI + Anthropic)
-GCP_DEPLOYMENT_GUIDE.md     # Human-readable setup guide
+├── deploy-gcp.yml                    # Deploys Open WebUI to Cloud Run
+└── deploy-litellm-gcp.yml            # Deploys LiteLLM proxy to Cloud Run
+setup-github-actions.sh               # One-time GCP setup for GitHub Actions
+setup-postgres.sh                     # One-time PostgreSQL database setup
+litellm_config.yaml                   # LiteLLM model routing config (Anthropic Claude models)
+anthropic_web_search_function.py      # Open WebUI function to enable Anthropic web search
+ANTHROPIC_WEB_SEARCH.md               # Web search integration guide
+GCP_DEPLOYMENT_GUIDE.md               # Human-readable setup guide
 ```
 
 **Never modify** upstream Open WebUI files (src/, backend/, etc.) - those are maintained by the upstream project
@@ -307,6 +309,44 @@ gcloud sql connect open-webui-db --user=openwebui --project=lb-openwebui
 
 ---
 
+## Web Search with Claude
+
+All Claude 4.5 models support **Anthropic's native web search tool** - a server-side capability that requires zero configuration:
+
+### Quick Facts
+- ✅ **No setup required** - Anthropic handles everything on their servers
+- ✅ **Auto-enabled** - Use the provided `anthropic_web_search_function.py` in Open WebUI
+- ✅ **Built-in citations** - Every search result includes source URLs
+- ✅ **Cost**: $10 per 1,000 searches + standard token costs
+- ✅ **Verified working** with direct curl test to LiteLLM proxy
+
+### How to Enable
+
+**Option 1: Custom Function (Recommended)**
+1. Open Open WebUI → **Workspace → Functions**
+2. Create new function with `anthropic_web_search_function.py` contents
+3. Save - web search now auto-enabled for all Claude models
+
+**Option 2: Manual per-request**
+Include in API calls:
+```json
+{
+  "model": "claude-sonnet-4-5",
+  "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 5}]
+}
+```
+
+**Full documentation**: See `ANTHROPIC_WEB_SEARCH.md`
+
+### Why Use Anthropic's Web Search vs Open WebUI LLM Web Search?
+- ✅ **Zero infrastructure** - No embedding models to download
+- ✅ **No storage** - Runs on Anthropic's servers
+- ✅ **Better for Cloud Run** - No cold start delays from model downloads
+- ✅ **Automatic citations** - Built into responses
+- ✅ **More reliable** - Anthropic's infrastructure vs your instance
+
+---
+
 ## Instructions for Coding Agents
 
 **TRUST THESE INSTRUCTIONS**: This document is comprehensive and validated. Only search for additional information if these instructions are incorrect or incomplete.
@@ -317,11 +357,13 @@ gcloud sql connect open-webui-db --user=openwebui --project=lb-openwebui
 3. **Creating/updating GCP secrets**: Use `gcloud secrets` commands
 4. **Troubleshooting deployments**: Check logs, verify configurations
 5. **Updating setup scripts**: Modify `setup-github-actions.sh` or `setup-postgres.sh`
+6. **Web search configuration**: Update `anthropic_web_search_function.py` settings
 
 **What NOT to do**:
 1. **DO NOT** modify upstream Open WebUI source code (src/, backend/, etc.)
 2. **DO NOT** attempt to build Open WebUI locally - we use pre-built images
 3. **DO NOT** change the Docker image sources (`ghcr.io/open-webui/open-webui:main` and `ghcr.io/berriai/litellm:main-latest`)
+4. **DO NOT** install Open WebUI LLM Web Search tool - use Anthropic's native web search instead
 
 **Before making changes**:
 1. Understand which workflow file to modify (Open WebUI vs LiteLLM)

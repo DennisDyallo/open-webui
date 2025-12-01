@@ -1,5 +1,10 @@
 model_list:
   # Claude 4.5 Models (Latest - December 2025)
+  # All models support Anthropic's native web search tool (web_search_20250305)
+  # To use: Pass tools parameter in API request - LiteLLM will passthrough to Anthropic
+  # Pricing: $10 per 1,000 searches + standard token costs
+  # Docs: https://docs.anthropic.com/en/docs/build-with-claude/tool-use/web-search-tool
+  
   - model_name: claude-sonnet-4-5
     litellm_params:
       model: anthropic/claude-sonnet-4-5-20250929
