@@ -63,8 +63,8 @@ jobs:
             --memory 1Gi \
             --cpu 1 \
             --timeout 300 \
-            --no-allow-unauthenticated \
-            --ingress internal-and-cloud-load-balancing \
+            --allow-unauthenticated \
+            --ingress all \
             --set-env-vars ENV=prod \
             --set-secrets=LITELLM_MASTER_KEY=lb-litellm-master-key:latest \
             --set-secrets=OPENAI_API_KEY=lb-openwebui-openai-api-key:latest \
